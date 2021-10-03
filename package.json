@@ -1,0 +1,16 @@
+{
+  "name": "scorched-server",
+  "version": "0.0.1",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node .",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Chance Hudson",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^10.0.0",
+    "especial": "^0.0.5"
+  }
+}
