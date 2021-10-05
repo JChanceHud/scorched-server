@@ -115,7 +115,7 @@ class ChannelManager {
   }
 
   sendMessage(channelId, _message) {
-    if (!_message.type) throw new Error('Invalid message type')
+    if (typeof _message.type !== 'number') throw new Error('Invalid message type')
     if (!this.channelsById[channelId]) throw new Error('Channel does not exist')
     const message = {
       ..._message,

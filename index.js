@@ -55,6 +55,11 @@ app.handle('channel.messages', (data, send, next) => {
   send(messages)
 })
 
+app.handle('channel.send', (data, send, next) => {
+  ChannelManager.sendMessage(data.channelId, data.message)
+  send()
+})
+
 app.handle('channel.subscribe', (data, send, next, ws) => {
   const {
     channelId,
@@ -63,7 +68,7 @@ app.handle('channel.subscribe', (data, send, next, ws) => {
   } = data
   const id = ChannelManager.listenToChannel(data.channelId, data.owner, (message) => {
     // a message has been received
-    app.broadcastOne(subscriptionId, message, ws)
+    app.broadcastOne(subscriptionId, '', message, ws)
   })
   ws.on('close', () => ChannelManager.removeListener(id))
   send()
