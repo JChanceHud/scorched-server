@@ -24,7 +24,7 @@ const messageTypes = {
   NEW_STATE: 3,
 }
 
-const normalizeAddress = (addr) => `0x${addr.replace('0x', '').toLowerCase()}`
+const normalizeAddress = (addr) => ethers.utils.getAddress(addr)
 
 class ChannelManager {
   channelIds = {}
@@ -61,6 +61,23 @@ class ChannelManager {
     ]
   }
 
+  loadChannels() {
+    // arrange the channels by last sent message
+    const channels = Object.keys(this.channelIdsByAsker).map((asker) => {
+      return this.channelsById[this.channelIdsByAsker[asker]]
+    }).sort((a, b) => {
+      return a.messages[0]?.timestamp - b.messages[0]?.timestamp
+    })
+    return channels
+  }
+
+  addressBelongsToChannel(address, channelId) {
+    const channel = this.channelsById[channelId]
+    if (!channel) return false
+    const { participants } = channel
+    return participants.indexOf(normalizeAddress(address)) !== -1
+  }
+
   channelForAsker(_askerAddress) {
     const askerAddress = normalizeAddress(_askerAddress)
     if (this.channelIdsByAsker[askerAddress]) {
@@ -73,7 +90,7 @@ class ChannelManager {
     const askerAddress = normalizeAddress(_askerAddress)
     const channelNonce = ++this.latestNonce
     const chainId = 4
-    const participants = [askerAddress, SUGGESTER_ADDRESS]
+    const participants = [askerAddress, normalizeAddress(SUGGESTER_ADDRESS)]
     const channelConfig = {
       chainId,
       channelNonce,

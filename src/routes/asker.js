@@ -1,5 +1,8 @@
 const ChannelManager = require('../channel_manager')
-const auth = require('../middlewares/auth')
+const { auth } = require('../middlewares/auth')
+const ethers = require('ethers')
+
+const { SUGGESTER_ADDRESS } = process.env
 
 let app
 module.exports = (_app) => {
@@ -10,15 +13,21 @@ module.exports = (_app) => {
   app.handle('channel.subscribe', auth, channelSubscribe)
 }
 
+// return a list of channels
 function loadChannel(data, send, next) {
-  const channel = ChannelManager.channelForAsker(data.auth.address)
-  send(channel)
+  if (data.auth.address === ethers.utils.getAddress(SUGGESTER_ADDRESS)) {
+    console.log('suggester connected')
+    const channels = ChannelManager.loadChannels()
+    send(channels)
+  } else {
+    const channel = ChannelManager.channelForAsker(data.auth.address)
+    send([channel])
+  }
 }
 
 function loadChannelMessages(data, send, next) {
-  const channel = ChannelManager.channelForAsker(data.auth.address)
-  if (channel.id !== data.channelId) {
-    send(1, 'Not authed for supplied channel id')
+  if (!ChannelManager.addressBelongsToChannel(data.auth.address, data.channelId)) {
+    send('Not authed for supplied channel id', 1)
     return
   }
   const messages = ChannelManager.retrieveMessages(
@@ -31,9 +40,8 @@ function loadChannelMessages(data, send, next) {
 }
 
 function channelSendMessage(data, send, next) {
-  const channel = ChannelManager.channelForAsker(data.auth.address)
-  if (channel.id !== data.channelId) {
-    send(1, 'Not authed for supplied channel id')
+  if (!ChannelManager.addressBelongsToChannel(data.auth.address, data.channelId)) {
+    send('Not authed for supplied channel id', 1)
     return
   }
   if (typeof data.message !== 'object') {
@@ -49,9 +57,8 @@ function channelSendMessage(data, send, next) {
 }
 
 function channelSubscribe(data, send, next, ws) {
-  const channel = ChannelManager.channelForAsker(data.auth.address)
-  if (channel.id !== data.channelId) {
-    send(1, 'Not authed for supplied channel id')
+  if (!ChannelManager.addressBelongsToChannel(data.auth.address, data.channelId)) {
+    send('Not authed for supplied channel id', 1)
     return
   }
   const {
@@ -61,7 +68,10 @@ function channelSubscribe(data, send, next, ws) {
   } = data
   const id = ChannelManager.listenToChannel(data.channelId, data.auth.address, (message) => {
     // a message has been received
-    app.broadcastOne(subscriptionId, '', message, ws)
+    app.broadcastOne(subscriptionId, '', {
+      channelId,
+      message,
+    }, ws)
   })
   ws.on('close', () => ChannelManager.removeListener(id))
   send()
