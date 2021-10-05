@@ -37,6 +37,10 @@ class ChannelManager {
 
   }
 
+  channel(channelId) {
+    return this.channelsById[channelId]
+  }
+
   _createOutcome(balances) {
     const keyedBalances = {}
     for (const address of Object.keys(balances)) {

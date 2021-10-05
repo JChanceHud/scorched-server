@@ -31,7 +31,6 @@ app.handle('info', (data, send, next) => {
 })
 
 require('./src/routes/asker')(app)
-require('./src/routes/auth')(app)
 require('./src/routes/suggester')(app)
 
 const server = app.listen(4000, () => {
