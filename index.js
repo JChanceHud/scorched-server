@@ -8,7 +8,6 @@ const app = especial()
 const {
   SUGGESTER_ADDRESS,
   SCORCHED_ADDRESS,
-  ASSET_HOLDER_ADDRESS,
   ADJUDICATOR_ADDRESS,
   CHALLENGE_DURATION,
 } = process.env
@@ -23,7 +22,6 @@ app.handle('info', (data, send, next) => {
     version: 0,
     contracts: {
       scorched: SCORCHED_ADDRESS,
-      assetHolder: ASSET_HOLDER_ADDRESS,
       adjudicator: ADJUDICATOR_ADDRESS,
     },
     suggester: SUGGESTER_ADDRESS,

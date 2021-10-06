@@ -11,6 +11,13 @@ module.exports = (_app) => {
   app.handle('channel.messages', auth, loadChannelMessages)
   app.handle('channel.send', auth, channelSendMessage)
   app.handle('channel.subscribe', auth, channelSubscribe)
+  app.handle('channel.submitSignedState', auth, submitSignedState)
+}
+
+function submitSignedState(data, send) {
+  const { channelId, state, signature } = data
+  ChannelManager.submitSignedState(channelId, state, signature)
+  send()
 }
 
 // return a list of channels

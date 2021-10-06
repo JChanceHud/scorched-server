@@ -55,6 +55,7 @@ class ChannelManager {
     }
     return [
       {
+        asset: ethers.constants.AddressZero,
         assetHolderAddress: ASSET_HOLDER_ADDRESS,
         allocationItems: allocation,
       }
@@ -96,7 +97,7 @@ class ChannelManager {
       channelNonce,
       participants,
     }
-    const startingState = {
+    const baseState = {
       isFinal: false,
       channel: channelConfig,
       outcome: this._createOutcome({
@@ -113,13 +114,15 @@ class ChannelManager {
     const channelCreatedMessage = {
       type: messageTypes.CHANNEL_CREATED,
       channelId,
-      startingState,
+      baseState,
     }
     // suggester needs to sign first, then asker
     const channel = {
       id: channelId,
       participants,
-      states: [startingState],
+      states: [],
+      baseState,
+      signatures: [],
       messages: [],
     }
     this.channelsById[channelId] = channel
@@ -133,6 +136,14 @@ class ChannelManager {
     if (!this.channelsById[channelId]) return []
     const { messages } = this.channelsById[channelId]
     return messages
+  }
+
+  submitSignedState(channelId, state, signature) {
+    // TODO verify sig
+    const channel = this.channelsById[channelId]
+    if (!channel) throw new Error('Channel not found')
+    channel.states.push(state)
+    channel.signatures.push(signature)
   }
 
   sendMessage(channelId, _message) {
