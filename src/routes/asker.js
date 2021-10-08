@@ -73,11 +73,18 @@ function channelSubscribe(data, send, next, ws) {
     owner,
     subscriptionId,
   } = data
-  const id = ChannelManager.listenToChannel(data.channelId, data.auth.address, (message) => {
+  // TODO: validate subscriptionId uniqueness
+  const id = ChannelManager.listenToChannel(data.channelId, data.auth.address, ({
+    message,
+    state,
+    signature,
+  }) => {
     // a message has been received
     app.broadcastOne(subscriptionId, '', {
       channelId,
       message,
+      state,
+      signature,
     }, ws)
   })
   ws.on('close', () => ChannelManager.removeListener(id))

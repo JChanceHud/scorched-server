@@ -90,7 +90,7 @@ class ChannelManager {
   createChannelForAsker(_askerAddress) {
     const askerAddress = normalizeAddress(_askerAddress)
     const channelNonce = ++this.latestNonce
-    const chainId = 4
+    const chainId = 5
     const participants = [askerAddress, normalizeAddress(SUGGESTER_ADDRESS)]
     const channelConfig = {
       chainId,
@@ -144,6 +144,16 @@ class ChannelManager {
     if (!channel) throw new Error('Channel not found')
     channel.states.push(state)
     channel.signatures.push(signature)
+    const listeners = this.channelListenersById[channelId] || []
+    for (const fn of listeners) {
+      if (!fn) continue
+      try {
+        fn({ state, signature })
+      } catch (err) {
+        console.log(err)
+        console.log('Uncaught error in channel listener callback')
+      }
+    }
   }
 
   sendMessage(channelId, _message) {
@@ -158,7 +168,7 @@ class ChannelManager {
     for (const fn of listeners) {
       if (!fn) continue
       try {
-        fn(message)
+        fn({ message })
       } catch (err) {
         console.log(err)
         console.log('Uncaught error in channel listener callback')
