@@ -33,7 +33,7 @@ class ChannelManager {
   channelIds = {}
   channelIdsByAsker = {}
   channelsById = {}
-  latestNonce = 10
+  latestNonce = 11
   channelListenersById = {}
   provider = undefined
 
@@ -143,10 +143,14 @@ class ChannelManager {
       signatures: [],
       messages: [],
       adjudicatorAddress: ADJUDICATOR_ADDRESS,
+      balances: {
+        [ethers.constants.AddressZero]: 0,
+      }
     }
     this.channelsById[channelId] = channel
     this.channelIdsByAsker[askerAddress] = channelId
     this.sendMessage(channel.id, channelCreatedMessage)
+    this.updateBalances(channel.id).catch(err => console.log(err))
     return channel
   }
 
