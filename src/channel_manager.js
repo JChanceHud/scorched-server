@@ -2,17 +2,20 @@ const ethers = require('ethers')
 const {
   getChannelId,
   signState,
-  getFiexedPart,
+  getFixedPart,
   getVariablePart,
   createOutcome,
 } = require('@statechannels/nitro-protocol')
+const {
+  AdjudicatorABI,
+} = require('scorched')
 // A singleton for managing state info between suggesters and askers
 
 const {
   SUGGESTER_ADDRESS,
   SCORCHED_ADDRESS,
   CHALLENGE_DURATION,
-  ASSET_HOLDER_ADDRESS,
+  ADJUDICATOR_ADDRESS,
   RPC_URL,
 } = process.env
 
@@ -30,11 +33,26 @@ class ChannelManager {
   channelIds = {}
   channelIdsByAsker = {}
   channelsById = {}
-  latestNonce = 2
+  latestNonce = 10
   channelListenersById = {}
+  provider = undefined
 
   constructor(filepath, rpcAddr) {
-
+    // need to start listening to the adjudicator for deposits
+    this.provider = new ethers.providers.WebSocketProvider(RPC_URL)
+    const adjudicator = new ethers.Contract(ADJUDICATOR_ADDRESS, AdjudicatorABI, this.provider)
+    adjudicator.on('Deposited', (channelId, asset, amount, nowHeld, tx) => {
+      const channel = this.channelsById[channelId]
+      if (!channel) return
+      setTimeout(async () => {
+        try {
+          await this.updateBalances(channelId)
+        } catch (err) {
+          console.log(err)
+          console.log('Error updating balances')
+        }
+      }, 30 * 1000)
+    })
   }
 
   channel(channelId) {
@@ -56,7 +74,7 @@ class ChannelManager {
     return [
       {
         asset: ethers.constants.AddressZero,
-        assetHolderAddress: ASSET_HOLDER_ADDRESS,
+        assetHolderAddress: ADJUDICATOR_ADDRESS,
         allocationItems: allocation,
       }
     ]
@@ -124,11 +142,31 @@ class ChannelManager {
       baseState,
       signatures: [],
       messages: [],
+      adjudicatorAddress: ADJUDICATOR_ADDRESS,
     }
     this.channelsById[channelId] = channel
     this.channelIdsByAsker[askerAddress] = channelId
     this.sendMessage(channel.id, channelCreatedMessage)
     return channel
+  }
+
+  async updateBalances(channelId) {
+    const channel = this.channelsById[channelId]
+    const adjudicator = new ethers.Contract(ADJUDICATOR_ADDRESS, AdjudicatorABI, this.provider)
+    const balances = {
+      [ethers.constants.AddressZero]: (await adjudicator.holdings(ethers.constants.AddressZero, channelId))
+    }
+    this.channelsById[channelId].balances = balances
+    const listeners = this.channelListenersById[channelId] || []
+    for (const fn of listeners) {
+      if (!fn) continue
+      try {
+        fn({ balances })
+      } catch (err) {
+        console.log(err)
+        console.log('Uncaught error in channel listener callback')
+      }
+    }
   }
 
   retrieveMessages(channelId, _owner, start, count) {
