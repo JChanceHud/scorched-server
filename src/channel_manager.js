@@ -30,7 +30,7 @@ class ChannelManager {
   channelIds = {}
   channelIdsByAsker = {}
   channelsById = {}
-  latestNonce = 0
+  latestNonce = 2
   channelListenersById = {}
 
   constructor(filepath, rpcAddr) {
@@ -100,11 +100,11 @@ class ChannelManager {
     const baseState = {
       isFinal: false,
       channel: channelConfig,
-      outcome: this._createOutcome({
-        [askerAddress]: 10,
-        [SUGGESTER_ADDRESS]: 10,
-        [ethers.constants.AddressZero]: 0,
-      }),
+      // outcome: this._createOutcome({
+      //   [askerAddress]: 10,
+      //   [SUGGESTER_ADDRESS]: 10,
+      //   [ethers.constants.AddressZero]: 0,
+      // }),
       appDefinition: SCORCHED_ADDRESS,
       appData: ethers.constants.HashZero,
       challengeDuration: CHALLENGE_DURATION ?? 24 * 60 * 60 * 1000,
@@ -154,6 +154,10 @@ class ChannelManager {
         console.log('Uncaught error in channel listener callback')
       }
     }
+    this.sendMessage(channelId, {
+      text: `State #${state.turnNum} submitted by ${state.turnNum % 2 === 0 ? 'asker' : 'suggester'}!`,
+      type: 0,
+    })
   }
 
   sendMessage(channelId, _message) {
