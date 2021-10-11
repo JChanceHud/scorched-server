@@ -6,15 +6,10 @@ const especial = require('especial')
 const app = especial()
 
 const {
-  SUGGESTER_ADDRESS,
   SCORCHED_ADDRESS,
   ADJUDICATOR_ADDRESS,
   CHALLENGE_DURATION,
 } = process.env
-if (!SUGGESTER_ADDRESS) {
-  console.log('No SUGGESTER_ADDRESS configured')
-  process.exit(1)
-}
 
 // try to load the scorched contract, do some sanity checks
 app.handle('info', (data, send, next) => {
@@ -24,7 +19,6 @@ app.handle('info', (data, send, next) => {
       scorched: SCORCHED_ADDRESS,
       adjudicator: ADJUDICATOR_ADDRESS,
     },
-    suggester: SUGGESTER_ADDRESS,
   })
 })
 

@@ -14,7 +14,6 @@ const {
 // A singleton for managing state info between suggesters and askers
 
 const {
-  SUGGESTER_ADDRESS,
   SCORCHED_ADDRESS,
   CHALLENGE_DURATION,
   ADJUDICATOR_ADDRESS,

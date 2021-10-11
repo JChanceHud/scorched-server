@@ -1,7 +1,5 @@
 const ethers = require('ethers')
 
-const { SUGGESTER_ADDRESS } = process.env
-
 const params = {
   domain: {
     chainId: 5,
@@ -54,19 +52,6 @@ function auth(data, send, next) {
   next()
 }
 
-function requireSuggester(data, send, next) {
-  if (!data.auth || !data.auth.address) {
-    send('Not authenticated', 1)
-    return
-  }
-  if (ethers.utils.getAddress(SUGGESTER_ADDRESS) !== data.auth.address) {
-    send('Not suggester', 1)
-    return
-  }
-  next()
-}
-
 module.exports = {
   auth,
-  requireSuggester,
 }

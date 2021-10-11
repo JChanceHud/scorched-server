@@ -2,8 +2,6 @@ const ChannelManager = require('../channel_manager')
 const { auth } = require('../middlewares/auth')
 const ethers = require('ethers')
 
-const { SUGGESTER_ADDRESS } = process.env
-
 let app
 module.exports = (_app) => {
   app = _app
