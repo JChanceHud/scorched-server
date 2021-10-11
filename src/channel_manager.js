@@ -1,4 +1,6 @@
 const ethers = require('ethers')
+const path = require('path')
+const fs = require('fs')
 const {
   getChannelId,
   signState,
@@ -17,6 +19,7 @@ const {
   CHALLENGE_DURATION,
   ADJUDICATOR_ADDRESS,
   RPC_URL,
+  DATA_FILEPATH,
 } = process.env
 
 // Types of messages sent
@@ -30,15 +33,19 @@ const messageTypes = {
 const normalizeAddress = (addr) => ethers.utils.getAddress(addr)
 
 class ChannelManager {
-  channelIds = {}
   channelIdsByAsker = {}
   channelsById = {}
-  latestNonce = 11
+  latestNonce = 15
   channelListenersById = {}
   provider = undefined
 
-  constructor(filepath, rpcAddr) {
+  constructor() {
     // need to start listening to the adjudicator for deposits
+    const filepath = path.isAbsolute(DATA_FILEPATH) ? DATA_FILEPATH : path.join(process.cwd(), DATA_FILEPATH)
+    this.loadData(filepath)
+    setInterval(() => {
+      this.saveData(filepath)
+    }, 30000)
     this.provider = new ethers.providers.WebSocketProvider(RPC_URL)
     const adjudicator = new ethers.Contract(ADJUDICATOR_ADDRESS, AdjudicatorABI, this.provider)
     adjudicator.on('Deposited', (channelId, asset, amount, nowHeld, tx) => {
@@ -53,6 +60,42 @@ class ChannelManager {
         }
       }, 30 * 1000)
     })
+  }
+
+  // Load a json file
+  loadData(filepath) {
+    try {
+      if (!fs.existsSync(filepath)) return
+      const data = require(filepath)
+      const { channelsById, latestNonce } = data
+      this.latestNonce = latestNonce
+      this.channelsById = channelsById
+      this.channelIdsByAsker = Object.keys(channelsById).reduce((acc, channelId) => {
+        const channel = channelsById[channelId]
+        return {
+          ...acc,
+          [channel.participants[0]]: channelId,
+        }
+      }, {})
+    } catch (err) {
+      console.log(err)
+      console.log('Error loading data')
+      process.exit(1)
+    }
+  }
+
+  saveData(filepath) {
+    try {
+      const data = {
+        channelsById: this.channelsById,
+        latestNonce: this.latestNonce,
+      }
+      const dataString = JSON.stringify(data)
+      fs.writeFileSync(filepath, dataString)
+    } catch (err) {
+      console.log(err)
+      console.log('Error writing data')
+    }
   }
 
   channel(channelId) {
