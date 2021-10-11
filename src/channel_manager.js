@@ -33,10 +33,15 @@ const messageTypes = {
 const normalizeAddress = (addr) => ethers.utils.getAddress(addr)
 
 class ChannelManager {
-  channelIdsByAsker = {}
+  // A given address might have multiple channel ids with different suggesters/askers
+  channelIdsForAsker = {}
+  channelIdsForSuggester = {}
   channelsById = {}
   latestNonce = 15
+  // for listening to individual channels
   channelListenersById = {}
+  // for listening for new channels
+  listenersByAddress = {}
   provider = undefined
 
   constructor() {
@@ -70,13 +75,16 @@ class ChannelManager {
       const { channelsById, latestNonce } = data
       this.latestNonce = latestNonce
       this.channelsById = channelsById
-      this.channelIdsByAsker = Object.keys(channelsById).reduce((acc, channelId) => {
-        const channel = channelsById[channelId]
-        return {
-          ...acc,
-          [channel.participants[0]]: channelId,
-        }
-      }, {})
+      const channelIdsByAsker = {}
+      const channelIdsBySuggester = {}
+      for (const key of Object.keys(channelsById)) {
+        const channel = channelsById[key]
+        const [ asker, suggester ] = channel.participants
+        channelIdsByAsker[asker] = [...(channelIdsByAsker[asker] || []), channel.id]
+        channelIdsBySuggester[suggester] = [...(channelIdsBySuggester[suggester]|| []), channel.id]
+      }
+      this.channelIdsForAsker = channelIdsByAsker
+      this.channelIdsForSuggester = channelIdsBySuggester
     } catch (err) {
       console.log(err)
       console.log('Error loading data')
@@ -123,10 +131,11 @@ class ChannelManager {
     ]
   }
 
-  loadChannels() {
+  loadChannels(address) {
     // arrange the channels by last sent message
-    const channels = Object.keys(this.channelIdsByAsker).map((asker) => {
-      return this.channelsById[this.channelIdsByAsker[asker]]
+    const allChannelIds = [...(this.channelIdsForAsker[address] || []), ...(this.channelIdsForSuggester[address] || [])]
+    const channels = allChannelIds.map((channelId) => {
+      return this.channelsById[channelId]
     }).sort((a, b) => {
       return a.messages[0]?.timestamp - b.messages[0]?.timestamp
     })
@@ -140,19 +149,28 @@ class ChannelManager {
     return participants.indexOf(normalizeAddress(address)) !== -1
   }
 
-  channelForAsker(_askerAddress) {
-    const askerAddress = normalizeAddress(_askerAddress)
-    if (this.channelIdsByAsker[askerAddress]) {
-      return this.channelsById[this.channelIdsByAsker[askerAddress]]
+  loadOrCreateChannel(_asker, _suggester) {
+    const asker = normalizeAddress(_asker)
+    const suggester = normalizeAddress(_suggester)
+    // TODO do this in constant time
+    const askerChannelIds = this.channelIdsForAsker[asker] || []
+    const suggesterChannelIds = this.channelIdsForSuggester[suggester] || []
+    const shortestList = askerChannelIds.length > suggesterChannelIds ? suggesterChannelIds : askerChannelIds
+    for (const channelId of shortestList) {
+      const channel = this.channelsById[channelId]
+      if (channel.participants[0] === asker && channel.participants[1] === suggester) {
+        return channel
+      }
     }
-    return this.createChannelForAsker(askerAddress)
+    return this.createChannel(asker, suggester)
   }
 
-  createChannelForAsker(_askerAddress) {
+  createChannel(_askerAddress, _suggesterAddress) {
     const askerAddress = normalizeAddress(_askerAddress)
+    const suggesterAddress = normalizeAddress(_suggesterAddress)
     const channelNonce = ++this.latestNonce
     const chainId = 5
-    const participants = [askerAddress, normalizeAddress(SUGGESTER_ADDRESS)]
+    const participants = [askerAddress, suggesterAddress]
     const channelConfig = {
       chainId,
       channelNonce,
@@ -191,9 +209,11 @@ class ChannelManager {
       }
     }
     this.channelsById[channelId] = channel
-    this.channelIdsByAsker[askerAddress] = channelId
+    this.channelIdsForAsker[askerAddress] = [...(this.channelIdsForAsker[askerAddress] || []), channelId]
+    this.channelIdsForSuggester[suggesterAddress] = [...(this.channelIdsForSuggester[suggesterAddress] || []), channelId]
     this.sendMessage(channel.id, channelCreatedMessage)
     this.updateBalances(channel.id).catch(err => console.log(err))
+    this.newChannelCreated(channel)
     return channel
   }
 
@@ -278,9 +298,43 @@ class ChannelManager {
     return this.channelListenersById[channelId].length - 1
   }
 
-  removeListener(channelId, index) {
+  removeChannelListener(channelId, index) {
     if (!this.channelListenersById[channelId]) return
     this.channelListenersById[channelId][index] = undefined
+  }
+
+  newChannelCreated(channel) {
+    const [ asker, suggester ] = channel.participants
+    const listeners = [
+      ...(this.listenersByAddress[asker] || []),
+      ...(this.listenersByAddress[suggester] || []),
+    ]
+    for (const fn of listeners) {
+      if (!fn) continue
+      try {
+        fn({ channel })
+      } catch (err) {
+        console.log(err)
+        console.log('Uncaught error in new channel listener callback')
+      }
+    }
+  }
+
+  listenForNewChannels(_owner, cb) {
+    const owner = normalizeAddress(_owner)
+    if (typeof cb !== 'function')
+      throw new Error('Listener callback must be a function')
+    if (!this.listenersByAddress[owner]) {
+      this.listenersByAddress[owner] = []
+    }
+    this.listenersByAddress[owner].push(cb)
+    return this.listenersByAddress[owner].length - 1
+  }
+
+  removeListener(_owner, index) {
+    const owner = normalizeAddress(_owner)
+    if (!this.listenersByAddress[owner]) return
+    this.listenersByAddress[owner][index] = undefined
   }
 }
 

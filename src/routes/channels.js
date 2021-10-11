@@ -7,11 +7,20 @@ const { SUGGESTER_ADDRESS } = process.env
 let app
 module.exports = (_app) => {
   app = _app
+  app.handle('channel.create', auth, createChannel)
   app.handle('channel.retrieve', auth, loadChannel)
   app.handle('channel.messages', auth, loadChannelMessages)
   app.handle('channel.send', auth, channelSendMessage)
   app.handle('channel.subscribe', auth, channelSubscribe)
+  app.handle('channel.subscribeNewChannels', auth, subscribeNewChannels)
   app.handle('channel.submitSignedState', auth, submitSignedState)
+}
+
+function createChannel(data, send) {
+  // can only create a channel with someone else as the suggester
+  const { suggester } = data
+  const channel = ChannelManager.loadOrCreateChannel(data.auth.address, suggester)
+  send(channel)
 }
 
 function submitSignedState(data, send) {
@@ -22,14 +31,8 @@ function submitSignedState(data, send) {
 
 // return a list of channels
 function loadChannel(data, send, next) {
-  if (data.auth.address === ethers.utils.getAddress(SUGGESTER_ADDRESS)) {
-    console.log('suggester connected')
-    const channels = ChannelManager.loadChannels()
-    send(channels)
-  } else {
-    const channel = ChannelManager.channelForAsker(data.auth.address)
-    send([channel])
-  }
+  const channels = ChannelManager.loadChannels(data.auth.address)
+  send(channels)
 }
 
 function loadChannelMessages(data, send, next) {
@@ -70,7 +73,6 @@ function channelSubscribe(data, send, next, ws) {
   }
   const {
     channelId,
-    owner,
     subscriptionId,
   } = data
   // TODO: validate subscriptionId uniqueness
@@ -81,6 +83,18 @@ function channelSubscribe(data, send, next, ws) {
       ...args,
     }, ws)
   })
-  ws.on('close', () => ChannelManager.removeListener(id))
+  ws.on('close', () => ChannelManager.removeChannelListener(channelId, id))
+  send()
+}
+
+function subscribeNewChannels(data, send, next, ws) {
+  const {
+    subscriptionId,
+  } = data
+  const address = data.auth.address
+  const id = ChannelManager.listenForNewChannels(address, (args) => {
+    app.broadcastOne(subscriptionId, '', args, ws)
+  })
+  ws.on('close', () => ChannelManager.removeListener(address, id))
   send()
 }

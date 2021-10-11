@@ -28,8 +28,7 @@ app.handle('info', (data, send, next) => {
   })
 })
 
-require('./src/routes/asker')(app)
-require('./src/routes/suggester')(app)
+require('./src/routes/channels')(app)
 
 const server = app.listen(4000, () => {
   console.log(`Listening on port 4000`)
