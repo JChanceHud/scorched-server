@@ -17,6 +17,10 @@ module.exports = (_app) => {
 function createChannel(data, send) {
   // can only create a channel with someone else as the suggester
   const { suggester } = data
+  if (ethers.utils.getAddress(suggester) === data.auth.address) {
+    send('Cannot create channel with own address', 1)
+    return
+  }
   const channel = ChannelManager.loadOrCreateChannel(data.auth.address, suggester)
   send(channel)
 }
