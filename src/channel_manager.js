@@ -52,7 +52,7 @@ class ChannelManager {
     }, 30000)
     this.provider = new ethers.providers.WebSocketProvider(RPC_URL)
     const adjudicator = new ethers.Contract(ADJUDICATOR_ADDRESS, AdjudicatorABI, this.provider)
-    adjudicator.on('Deposited', (channelId, asset, amount, nowHeld, tx) => {
+    const updateBalance = async (channelId) => {
       const channel = this.channelsById[channelId]
       if (!channel) return
       setTimeout(async () => {
@@ -63,6 +63,12 @@ class ChannelManager {
           console.log('Error updating balances')
         }
       }, 30 * 1000)
+    }
+    adjudicator.on('Deposited', (channelId, asset, amount, nowHeld, tx) => {
+      updateBalance(channelId)
+    })
+    adjudicator.on('Concluded', (channelId, timestamp, tx) => {
+      updateBalance(channelId)
     })
   }
 
@@ -205,7 +211,7 @@ class ChannelManager {
       adjudicatorAddress: ADJUDICATOR_ADDRESS,
       balances: {
         [ethers.constants.AddressZero]: 0,
-      }
+      },
     }
     this.channelsById[channelId] = channel
     this.channelIdsForAsker[askerAddress] = [...(this.channelIdsForAsker[askerAddress] || []), channelId]
