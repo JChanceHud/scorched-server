@@ -22,6 +22,8 @@ app.handle('info', (data, send, next) => {
   })
 })
 
+app.handle('ping', (data, send) => send('pong'))
+
 require('./src/routes/channels')(app)
 
 const server = app.listen(4000, () => {
