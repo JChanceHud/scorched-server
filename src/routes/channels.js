@@ -1,18 +1,19 @@
 const ChannelManager = require('../channel_manager')
 const { auth } = require('../middlewares/auth')
+const { catchError } = require('../middlewares/catch_error')
 const ethers = require('ethers')
 
 let app
 module.exports = (_app) => {
   app = _app
-  app.handle('channel.create', auth, createChannel)
-  app.handle('channel.retrieve', auth, loadChannel)
-  app.handle('channel.messages', auth, loadChannelMessages)
-  app.handle('channel.markRead', auth, markChannelRead)
-  app.handle('channel.send', auth, channelSendMessage)
-  app.handle('channel.subscribe', auth, channelSubscribe)
-  app.handle('channel.subscribeNewChannels', auth, subscribeNewChannels)
-  app.handle('channel.submitSignedState', auth, submitSignedState)
+  app.handle('channel.create', auth, catchError(createChannel))
+  app.handle('channel.retrieve', auth, catchError(loadChannel))
+  app.handle('channel.messages', auth, catchError(loadChannelMessages))
+  app.handle('channel.markRead', auth, catchError(markChannelRead))
+  app.handle('channel.send', auth, catchError(channelSendMessage))
+  app.handle('channel.subscribe', auth, catchError(channelSubscribe))
+  app.handle('channel.subscribeNewChannels', auth, catchError(subscribeNewChannels))
+  app.handle('channel.submitSignedState', auth, catchError(submitSignedState))
 }
 
 function markChannelRead(data, send) {
