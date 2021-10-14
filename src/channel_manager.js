@@ -41,6 +41,8 @@ class ChannelManager {
   channelListenersById = {}
   // for listening for new channels
   listenersByAddress = {}
+  // channelId->address->timestamp
+  lastReadByChannelId = {}
   provider = undefined
 
   constructor() {
@@ -77,9 +79,13 @@ class ChannelManager {
     try {
       if (!fs.existsSync(filepath)) return
       const data = require(filepath)
-      const { channelsById, latestNonce } = data
+      const { channelsById, latestNonce, lastReadByChannelId } = {
+        lastReadByChannelId: {}, // spread a default value for backward compat
+        ...data,
+      }
       this.latestNonce = latestNonce
       this.channelsById = channelsById
+      this.lastReadByChannelId = lastReadByChannelId
       const channelIdsByAsker = {}
       const channelIdsBySuggester = {}
       for (const key of Object.keys(channelsById)) {
@@ -102,6 +108,7 @@ class ChannelManager {
       const data = {
         channelsById: this.channelsById,
         latestNonce: this.latestNonce,
+        lastReadByChannelId: this.lastReadByChannelId,
       }
       const dataString = JSON.stringify(data)
       fs.writeFileSync(filepath, dataString)
@@ -142,8 +149,11 @@ class ChannelManager {
     const channels = allChannelIds.map((channelId) => {
       return this.channelsById[channelId]
     }).sort((a, b) => {
-      return a.messages[0]?.timestamp - b.messages[0]?.timestamp
+      return b.messages[0]?.timestamp - a.messages[0]?.timestamp
     })
+    for (const channel of channels) {
+      channel.unreadCount = this.unreadCount(channel.id, address)
+    }
     return channels
   }
 
@@ -277,12 +287,19 @@ class ChannelManager {
       ..._message,
       timestamp: +new Date(),
     }
-    this.channelsById[channelId].messages.unshift(message)
+    if (message.from) {
+      this.markChannelRead(channelId, message.from)
+    }
+    const channel = this.channelsById[channelId]
+    channel.messages.unshift(message)
     const listeners = this.channelListenersById[channelId] || []
     for (const fn of listeners) {
       if (!fn) continue
       try {
-        fn({ message })
+        fn({ message, channel: {
+          ...channel,
+          unreadCount: this.unreadCount(channelId, fn.owner)
+        } })
       } catch (err) {
         console.log(err)
         console.log('Uncaught error in channel listener callback')
@@ -298,6 +315,7 @@ class ChannelManager {
       throw new Error('Channel listener callback must be a function')
     if (!this.channelListenersById[channelId])
       this.channelListenersById[channelId] = []
+    cb.owner = owner
     this.channelListenersById[channelId].push(cb)
     // the id is the index
     return this.channelListenersById[channelId].length - 1
@@ -340,6 +358,28 @@ class ChannelManager {
     const owner = normalizeAddress(_owner)
     if (!this.listenersByAddress[owner]) return
     this.listenersByAddress[owner][index] = undefined
+  }
+
+  unreadCount(channelId, _address) {
+    const address = normalizeAddress(_address)
+    const channel = this.channelsById[channelId]
+    if (!channel)
+      throw new Error(`Unable to find channel with id ${channelId}`)
+    // calculate the unread count
+    if (channel.messages.length === 0) {
+      return 0
+    }
+    const latestRead = (this.lastReadByChannelId[channelId] || {})[address] || 0
+    return channel.messages
+      .filter((message) => message.timestamp > latestRead).length
+  }
+
+  markChannelRead(channelId, _address) {
+    const address = normalizeAddress(_address)
+    if (!this.lastReadByChannelId[channelId]) {
+      this.lastReadByChannelId[channelId] = {}
+    }
+    this.lastReadByChannelId[channelId][address] = +new Date()
   }
 }
 

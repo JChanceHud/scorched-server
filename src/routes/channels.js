@@ -8,10 +8,17 @@ module.exports = (_app) => {
   app.handle('channel.create', auth, createChannel)
   app.handle('channel.retrieve', auth, loadChannel)
   app.handle('channel.messages', auth, loadChannelMessages)
+  app.handle('channel.markRead', auth, markChannelRead)
   app.handle('channel.send', auth, channelSendMessage)
   app.handle('channel.subscribe', auth, channelSubscribe)
   app.handle('channel.subscribeNewChannels', auth, subscribeNewChannels)
   app.handle('channel.submitSignedState', auth, submitSignedState)
+}
+
+function markChannelRead(data, send) {
+  const { channelId } = data
+  ChannelManager.markChannelRead(channelId, data.auth.address)
+  send()
 }
 
 function createChannel(data, send) {
