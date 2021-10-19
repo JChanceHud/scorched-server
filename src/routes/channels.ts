@@ -1,7 +1,7 @@
-const ChannelManager = require('../channel_manager')
-const { auth } = require('../middlewares/auth')
-const { catchError } = require('../middlewares/catch_error')
-const ethers = require('ethers')
+import ChannelManager from '../channel_manager'
+import { auth } from '../middlewares/auth'
+import { catchError } from '../middlewares/catch_error'
+import { ethers } from 'ethers'
 
 let app
 module.exports = (_app) => {

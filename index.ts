@@ -1,5 +1,5 @@
 require('dotenv').config()
-const especial = require('especial')
+import especial from 'especial'
 // const ethers = require('ethers')
 // const { ScorchedABI } = require('scorched')
 
@@ -8,7 +8,6 @@ const app = especial()
 const {
   SCORCHED_ADDRESS,
   ADJUDICATOR_ADDRESS,
-  CHALLENGE_DURATION,
 } = process.env
 
 // try to load the scorched contract, do some sanity checks

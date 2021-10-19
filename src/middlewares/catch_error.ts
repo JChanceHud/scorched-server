@@ -1,4 +1,4 @@
-function catchError(fn) {
+export function catchError(fn) {
   return async function (...args) {
     const [ , send ] = args
     try {
@@ -9,8 +9,4 @@ function catchError(fn) {
       send('Uncaught error', 1)
     }
   }
-}
-
-module.exports = {
-  catchError,
 }

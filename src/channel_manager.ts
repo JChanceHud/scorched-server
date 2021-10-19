@@ -1,16 +1,10 @@
-const ethers = require('ethers')
-const path = require('path')
-const fs = require('fs')
-const {
+import { ethers, BigNumber } from 'ethers'
+import path from 'path'
+import fs from 'fs'
+import {
   getChannelId,
-  signState,
-  getFixedPart,
-  getVariablePart,
-  createOutcome,
-} = require('@statechannels/nitro-protocol')
-const {
-  AdjudicatorABI,
-} = require('scorched')
+} from '@statechannels/nitro-protocol'
+import { AdjudicatorABI } from 'scorched'
 // A singleton for managing state info between suggesters and askers
 
 const {
@@ -21,21 +15,55 @@ const {
   DATA_FILEPATH,
 } = process.env
 
-// Types of messages sent
-const messageTypes = {
-  TEXT: 0,
-  CHANNEL_CREATED: 1,
-  CHANNEL_SIGNATURE: 2,
-  NEW_STATE: 3,
+interface ChannelConfig {
+  chainId: string
+  channelNonce: number
+  participants: string[]
 }
 
-const normalizeAddress = (addr) => ethers.utils.getAddress(addr)
+interface Channel {
+  id: string
+  participants: string[]
+  states: State[]
+  baseState: State
+  signatures: string[]
+  messages: Message[]
+  adjudicatorAddress: string,
+  balances: { [key: string]: BigNumber | string }
+  unreadCount?: number
+}
+
+interface State {
+  turnNum: number
+  isFinal: boolean
+  appDefinition: string
+  appData: string
+  challengeDuration: number
+  channel: ChannelConfig
+}
+
+enum MessageType {
+  TEXT,
+  CHANNEL_CREATED,
+  CHANNEL_SIGNATURE,
+  NEW_STATE,
+}
+
+interface Message {
+  timestamp?: number
+  type: MessageType
+  from?: string
+  text?: string
+  baseState?: State
+}
+
+const normalizeAddress = (addr: string) => ethers.utils.getAddress(addr)
 
 class ChannelManager {
   // A given address might have multiple channel ids with different suggesters/askers
-  channelIdsForAsker = {}
-  channelIdsForSuggester = {}
-  channelsById = {}
+  channelIdsForAsker = {} as { [key: string]: string[] }
+  channelIdsForSuggester = {} as { [key: string]: string[] }
+  channelsById = {} as { [key: string]: Channel }
   latestNonce = 15
   // for listening to individual channels
   channelListenersById = {}
@@ -54,7 +82,7 @@ class ChannelManager {
     }, 30000)
     this.provider = new ethers.providers.WebSocketProvider(RPC_URL)
     const adjudicator = new ethers.Contract(ADJUDICATOR_ADDRESS, AdjudicatorABI, this.provider)
-    const updateBalance = async (channelId) => {
+    const updateBalance = async (channelId: string) => {
       const channel = this.channelsById[channelId]
       if (!channel) return
       setTimeout(async () => {
@@ -75,11 +103,11 @@ class ChannelManager {
   }
 
   // Load a json file
-  loadData(filepath) {
+  loadData(filepath: string) {
     try {
       if (!fs.existsSync(filepath)) return
       const data = require(filepath)
-      const { channelsById, latestNonce, lastReadByChannelId } = {
+      const { channelsById = {}, latestNonce = 0, lastReadByChannelId = {} } = {
         lastReadByChannelId: {}, // spread a default value for backward compat
         ...data,
       }
@@ -103,7 +131,7 @@ class ChannelManager {
     }
   }
 
-  saveData(filepath) {
+  saveData(filepath: string) {
     try {
       const data = {
         channelsById: this.channelsById,
@@ -118,11 +146,11 @@ class ChannelManager {
     }
   }
 
-  channel(channelId) {
+  channel(channelId: string) {
     return this.channelsById[channelId]
   }
 
-  _createOutcome(balances) {
+  _createOutcome(balances: { [key: string]: BigNumber | string }) {
     const keyedBalances = {}
     for (const address of Object.keys(balances)) {
       keyedBalances[ethers.utils.hexZeroPad(address, 32)] = balances[address]
@@ -143,7 +171,7 @@ class ChannelManager {
     ]
   }
 
-  loadChannels(address) {
+  loadChannels(address: string) {
     // arrange the channels by last sent message
     const allChannelIds = [...(this.channelIdsForAsker[address] || []), ...(this.channelIdsForSuggester[address] || [])]
     const channels = allChannelIds.map((channelId) => {
@@ -157,20 +185,20 @@ class ChannelManager {
     return channels
   }
 
-  addressBelongsToChannel(address, channelId) {
+  addressBelongsToChannel(address: string, channelId: string) {
     const channel = this.channelsById[channelId]
     if (!channel) return false
     const { participants } = channel
     return participants.indexOf(normalizeAddress(address)) !== -1
   }
 
-  loadOrCreateChannel(_asker, _suggester) {
+  loadOrCreateChannel(_asker: string, _suggester: string) {
     const asker = normalizeAddress(_asker)
     const suggester = normalizeAddress(_suggester)
     // TODO do this in constant time
     const askerChannelIds = this.channelIdsForAsker[asker] || []
     const suggesterChannelIds = this.channelIdsForSuggester[suggester] || []
-    const shortestList = askerChannelIds.length > suggesterChannelIds ? suggesterChannelIds : askerChannelIds
+    const shortestList = askerChannelIds.length > suggesterChannelIds.length ? suggesterChannelIds : askerChannelIds
     for (const channelId of shortestList) {
       const channel = this.channelsById[channelId]
       if (channel.participants[0] === asker && channel.participants[1] === suggester) {
@@ -180,11 +208,11 @@ class ChannelManager {
     return this.createChannel(asker, suggester)
   }
 
-  createChannel(_askerAddress, _suggesterAddress) {
+  createChannel(_askerAddress: string, _suggesterAddress: string) {
     const askerAddress = normalizeAddress(_askerAddress)
     const suggesterAddress = normalizeAddress(_suggesterAddress)
     const channelNonce = ++this.latestNonce
-    const chainId = 5
+    const chainId = '5'
     const participants = [askerAddress, suggesterAddress]
     const channelConfig = {
       chainId,
@@ -201,12 +229,12 @@ class ChannelManager {
       // }),
       appDefinition: SCORCHED_ADDRESS,
       appData: ethers.constants.HashZero,
-      challengeDuration: CHALLENGE_DURATION ?? 24 * 60 * 60 * 1000,
+      challengeDuration: +(CHALLENGE_DURATION ?? 24 * 60 * 60 * 1000),
       turnNum: 0,
     }
     const channelId = getChannelId(channelConfig)
     const channelCreatedMessage = {
-      type: messageTypes.CHANNEL_CREATED,
+      type: MessageType.CHANNEL_CREATED,
       channelId,
       baseState,
     }
@@ -220,7 +248,7 @@ class ChannelManager {
       messages: [],
       adjudicatorAddress: ADJUDICATOR_ADDRESS,
       balances: {
-        [ethers.constants.AddressZero]: 0,
+        [ethers.constants.AddressZero]: '0',
       },
     }
     this.channelsById[channelId] = channel
@@ -232,8 +260,7 @@ class ChannelManager {
     return channel
   }
 
-  async updateBalances(channelId) {
-    const channel = this.channelsById[channelId]
+  async updateBalances(channelId: string) {
     const adjudicator = new ethers.Contract(ADJUDICATOR_ADDRESS, AdjudicatorABI, this.provider)
     const balances = {
       [ethers.constants.AddressZero]: (await adjudicator.holdings(ethers.constants.AddressZero, channelId))
@@ -251,14 +278,13 @@ class ChannelManager {
     }
   }
 
-  retrieveMessages(channelId, _owner, start, count) {
-    const owner = normalizeAddress(_owner)
+  retrieveMessages(channelId: string, _owner: string, start: number, count: number) {
     if (!this.channelsById[channelId]) return []
     const { messages } = this.channelsById[channelId]
     return messages
   }
 
-  submitSignedState(channelId, state, signature) {
+  submitSignedState(channelId: string, state: State, signature: string) {
     // TODO verify sig
     const channel = this.channelsById[channelId]
     if (!channel) throw new Error('Channel not found')
@@ -280,7 +306,7 @@ class ChannelManager {
     })
   }
 
-  sendMessage(channelId, _message) {
+  sendMessage(channelId: string, _message: Message) {
     if (typeof _message.type !== 'number') throw new Error('Invalid message type')
     if (!this.channelsById[channelId]) throw new Error('Channel does not exist')
     const message = {
@@ -307,7 +333,7 @@ class ChannelManager {
     }
   }
 
-  listenToChannel(channelId, _owner, cb) {
+  listenToChannel(channelId: string, _owner: string, cb: Function & { owner?: string }) {
     const owner = normalizeAddress(_owner)
     if (!this.channelsById[channelId])
       throw new Error('The specific channel does not exist')
@@ -315,18 +341,18 @@ class ChannelManager {
       throw new Error('Channel listener callback must be a function')
     if (!this.channelListenersById[channelId])
       this.channelListenersById[channelId] = []
-    cb.owner = owner
+    ;(cb as any).owner = owner
     this.channelListenersById[channelId].push(cb)
     // the id is the index
     return this.channelListenersById[channelId].length - 1
   }
 
-  removeChannelListener(channelId, index) {
+  removeChannelListener(channelId: string, index: number) {
     if (!this.channelListenersById[channelId]) return
     this.channelListenersById[channelId][index] = undefined
   }
 
-  newChannelCreated(channel) {
+  newChannelCreated(channel: Channel) {
     const [ asker, suggester ] = channel.participants
     const listeners = [
       ...(this.listenersByAddress[asker] || []),
@@ -343,7 +369,7 @@ class ChannelManager {
     }
   }
 
-  listenForNewChannels(_owner, cb) {
+  listenForNewChannels(_owner: string, cb: Function) {
     const owner = normalizeAddress(_owner)
     if (typeof cb !== 'function')
       throw new Error('Listener callback must be a function')
@@ -354,13 +380,13 @@ class ChannelManager {
     return this.listenersByAddress[owner].length - 1
   }
 
-  removeListener(_owner, index) {
+  removeListener(_owner: string, index: number) {
     const owner = normalizeAddress(_owner)
     if (!this.listenersByAddress[owner]) return
     this.listenersByAddress[owner][index] = undefined
   }
 
-  unreadCount(channelId, _address) {
+  unreadCount(channelId: string, _address: string) {
     const address = normalizeAddress(_address)
     const channel = this.channelsById[channelId]
     if (!channel)
@@ -374,7 +400,7 @@ class ChannelManager {
       .filter((message) => message.timestamp > latestRead).length
   }
 
-  markChannelRead(channelId, _address) {
+  markChannelRead(channelId: string, _address: string) {
     const address = normalizeAddress(_address)
     if (!this.lastReadByChannelId[channelId]) {
       this.lastReadByChannelId[channelId] = {}
@@ -383,4 +409,4 @@ class ChannelManager {
   }
 }
 
-module.exports = new ChannelManager()
+export default new ChannelManager()

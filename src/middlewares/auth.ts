@@ -1,4 +1,4 @@
-const ethers = require('ethers')
+import { ethers } from 'ethers'
 
 const params = {
   domain: {
@@ -20,7 +20,7 @@ const params = {
   }
 }
 
-function auth(data, send, next) {
+export function auth(data, send, next) {
   // overwrite any provided auth value
   const auth = { ...(data.auth || {} ) }
   data.auth = {}
@@ -50,8 +50,4 @@ function auth(data, send, next) {
     timestamp: auth.timestamp,
   }
   next()
-}
-
-module.exports = {
-  auth,
 }
