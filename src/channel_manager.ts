@@ -304,7 +304,6 @@ class ChannelManager {
       question,
       state: QueryState.ASKED,
     })
-    this.pushChannelUpdate(channelId, { channel: this.channelsById[channelId] })
     this.sendMessage(channelId, {
       text: `New question: ${question}`,
       type: 0,
@@ -316,7 +315,6 @@ class ChannelManager {
     if (!activeQuery) throw new Error('No active query for channel')
     activeQuery.queryAccepted = accepted
     activeQuery.state = accepted ? QueryState.ACCEPTED : QueryState.COMPLETE
-    this.pushChannelUpdate(channelId, { channel: this.channelsById[channelId] })
     this.sendMessage(channelId, {
       text: `Question declined by suggester.`,
       type: 0,
@@ -330,7 +328,6 @@ class ChannelManager {
     if (activeQuery.answer !== undefined) throw new Error('Query has already been answered')
     activeQuery.answer = answer
     activeQuery.state = QueryState.ANSWERED
-    this.pushChannelUpdate(channelId, { channel: this.channelsById[channelId] })
     this.sendMessage(channelId, {
       text: `Question answered: ${answer}`,
       type: 0,
@@ -443,7 +440,7 @@ class ChannelManager {
     for (const fn of listeners) {
       if (!fn) continue
       try {
-        fn({ channel })
+        fn({ channel: { ...channel, unreadCount: 1 } })
       } catch (err) {
         console.log(err)
         console.log('Uncaught error in new channel listener callback')
