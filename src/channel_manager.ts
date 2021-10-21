@@ -127,7 +127,7 @@ class ChannelManager {
       const channelIdsBySuggester = {}
       for (const key of Object.keys(channelsById)) {
         const channel = channelsById[key]
-        const [ asker, suggester ] = channel.participants
+        const [ suggester, asker ] = channel.participants
         channelIdsByAsker[asker] = [...(channelIdsByAsker[asker] || []), channel.id]
         channelIdsBySuggester[suggester] = [...(channelIdsBySuggester[suggester]|| []), channel.id]
       }
@@ -205,7 +205,7 @@ class ChannelManager {
     const channel = this.channelsById[channelId]
     if (!channel) return false
     const { participants } = channel
-    return participants.indexOf(normalizeAddress(address)) === 1
+    return participants.indexOf(normalizeAddress(address)) === 0
   }
 
   loadOrCreateChannel(_asker: string, _suggester: string) {
@@ -217,7 +217,7 @@ class ChannelManager {
     const shortestList = askerChannelIds.length > suggesterChannelIds.length ? suggesterChannelIds : askerChannelIds
     for (const channelId of shortestList) {
       const channel = this.channelsById[channelId]
-      if (channel.participants[0] === asker && channel.participants[1] === suggester) {
+      if (channel.participants[1] === asker && channel.participants[0] === suggester) {
         return channel
       }
     }
@@ -229,7 +229,7 @@ class ChannelManager {
     const suggesterAddress = normalizeAddress(_suggesterAddress)
     const channelNonce = ++this.latestNonce
     const chainId = '5'
-    const participants = [askerAddress, suggesterAddress]
+    const participants = [suggesterAddress, askerAddress]
     const channelConfig = {
       chainId,
       channelNonce,
@@ -413,7 +413,7 @@ class ChannelManager {
   }
 
   newChannelCreated(channel: Channel) {
-    const [ asker, suggester ] = channel.participants
+    const [ suggester, asker ] = channel.participants
     const listeners = [
       ...(this.listenersByAddress[asker] || []),
       ...(this.listenersByAddress[suggester] || []),
