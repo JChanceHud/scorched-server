@@ -21,6 +21,8 @@ module.exports = (_app) => {
   app.handle('channel.subscribeNewChannels', auth, catchError(subscribeNewChannels))
   app.handle('channel.submitSignedState', auth, catchError(submitSignedState))
   app.handle('channel.submitQueryAnswer', auth, catchError(submitQueryAnswer))
+  app.handle('channel.submitQueryQuestion', auth, catchError(submitQueryQuestion))
+  app.handle('channel.submitQueryDecline', auth, catchError(submitQueryDecline))
 }
 
 function markChannelRead(data, send) {
@@ -40,6 +42,27 @@ function createChannel(data, send) {
   send(channel)
 }
 
+function submitQueryDecline(data, send) {
+  const { channelId } = data
+  if (!ChannelManager.addressIsSuggester(data.auth.address, channelId)) {
+    send('Not authed as suggester for supplied channel id', 1)
+    return
+  }
+  // decline the query
+  ChannelManager.acceptOrDeclineQuery(channelId, false)
+  send()
+}
+
+function submitQueryQuestion(data, send) {
+  const { channelId, question } = data
+  if (ChannelManager.addressIsSuggester(data.auth.address, channelId)) {
+    send('Not authed as asker for supplied channel id', 1)
+    return
+  }
+  ChannelManager.createQuery(channelId, question)
+  send()
+}
+
 function submitQueryAnswer(data, send) {
   const { channelId, answer } = data
   if (!ChannelManager.addressIsSuggester(data.auth.address, channelId)) {
@@ -55,8 +78,6 @@ function submitSignedState(data, send) {
     channelId,
     state,
     signature,
-    // optional fields depending on the type of state
-    question,
   } = data
   if (!ChannelManager.addressBelongsToChannel(data.auth.address, channelId)) {
     send('Not authed for supplied channel id', 1)
@@ -69,15 +90,8 @@ function submitSignedState(data, send) {
       queryStatus,
       responseStatus
     } = parseAppData(state.appData)
-    if (status === AppStatus.Negotiate && !question) {
-      send('No question supplied for negotiation', 1)
-      return
-    }
     // we have an active query, decode the app data and update the query info
-    if (question && status === AppStatus.Negotiate) {
-      // we're proposing the question
-      ChannelManager.createQuery(channelId, question)
-    } else if (status === AppStatus.Answer) {
+    if (status === AppStatus.Answer) {
       // suggester has accepted the query, now awaiting answer
       ChannelManager.acceptOrDeclineQuery(channelId, queryStatus === QueryStatus.Accepted)
     } else if (status === AppStatus.Validate) {

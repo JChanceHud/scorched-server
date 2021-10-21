@@ -34,12 +34,20 @@ interface Channel {
   unreadCount?: number
 }
 
+enum QueryState {
+  ASKED,
+  ACCEPTED,
+  ANSWERED,
+  COMPLETE,
+}
+
 interface Query {
   question: string
   queryAccepted?: boolean
   answer?: string
   // paid or burned?
   answerAccepted?: boolean
+  state: QueryState
 }
 
 interface State {
@@ -294,6 +302,12 @@ class ChannelManager {
     if (this.activeQuery(channelId)) throw new Error('Active query already exists')
     channel.queries.push({
       question,
+      state: QueryState.ASKED,
+    })
+    this.pushChannelUpdate(channelId, { channel: this.channelsById[channelId] })
+    this.sendMessage(channelId, {
+      text: `New question: ${question}`,
+      type: 0,
     })
   }
 
@@ -301,6 +315,12 @@ class ChannelManager {
     const activeQuery = this.activeQuery(channelId)
     if (!activeQuery) throw new Error('No active query for channel')
     activeQuery.queryAccepted = accepted
+    activeQuery.state = accepted ? QueryState.ACCEPTED : QueryState.COMPLETE
+    this.pushChannelUpdate(channelId, { channel: this.channelsById[channelId] })
+    this.sendMessage(channelId, {
+      text: `Question declined by suggester.`,
+      type: 0,
+    })
   }
 
   answerQuery(channelId: string, answer: string) {
@@ -309,13 +329,19 @@ class ChannelManager {
     if (activeQuery.queryAccepted !== true) throw new Error('Query has not been accepted')
     if (activeQuery.answer !== undefined) throw new Error('Query has already been answered')
     activeQuery.answer = answer
+    activeQuery.state = QueryState.ANSWERED
     this.pushChannelUpdate(channelId, { channel: this.channelsById[channelId] })
+    this.sendMessage(channelId, {
+      text: `Question answered: ${answer}`,
+      type: 0,
+    })
   }
 
   acceptOrDeclineQueryAnswer(channelId: string, accepted: boolean) {
     const activeQuery = this.activeQuery(channelId)
     if (!activeQuery) throw new Error('No active query for channel')
     activeQuery.answerAccepted = accepted
+    activeQuery.state = QueryState.COMPLETE
   }
 
   activeQuery(channelId: string): Query | undefined {
@@ -323,11 +349,7 @@ class ChannelManager {
     if (!channel) throw new Error('Channel not found')
     if (!channel.queries.length) return
     const latestQuery = channel.queries[channel.queries.length - 1]
-    if (
-      latestQuery.queryAccepted === undefined ||
-      latestQuery.queryAccepted === true && !latestQuery.answer ||
-      latestQuery.queryAccepted === true && latestQuery.answerAccepted === undefined
-    ) {
+    if (latestQuery.state !== QueryState.COMPLETE) {
       return latestQuery
     }
   }
