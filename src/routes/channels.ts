@@ -2,6 +2,12 @@ import ChannelManager from '../channel_manager'
 import { auth } from '../middlewares/auth'
 import { catchError } from '../middlewares/catch_error'
 import { ethers } from 'ethers'
+import {
+  parseAppData,
+  AppStatus,
+  QueryStatus,
+  ResponseStatus,
+} from 'scorched'
 
 let app
 module.exports = (_app) => {
@@ -14,6 +20,7 @@ module.exports = (_app) => {
   app.handle('channel.subscribe', auth, catchError(channelSubscribe))
   app.handle('channel.subscribeNewChannels', auth, catchError(subscribeNewChannels))
   app.handle('channel.submitSignedState', auth, catchError(submitSignedState))
+  app.handle('channel.submitQueryAnswer', auth, catchError(submitQueryAnswer))
 }
 
 function markChannelRead(data, send) {
@@ -33,8 +40,53 @@ function createChannel(data, send) {
   send(channel)
 }
 
+function submitQueryAnswer(data, send) {
+  const { channelId, answer } = data
+  if (!ChannelManager.addressIsSuggester(data.auth.address, channelId)) {
+    send('Not authed as suggester for supplied channel id', 1)
+    return
+  }
+  ChannelManager.answerQuery(channelId, answer)
+  send()
+}
+
 function submitSignedState(data, send) {
-  const { channelId, state, signature } = data
+  const {
+    channelId,
+    state,
+    signature,
+    // optional fields depending on the type of state
+    question,
+  } = data
+  if (!ChannelManager.addressBelongsToChannel(data.auth.address, channelId)) {
+    send('Not authed for supplied channel id', 1)
+    return
+  }
+  // if the state is proposing a query rate we need a question to go with it
+  try {
+    const {
+      status,
+      queryStatus,
+      responseStatus
+    } = parseAppData(state.appData)
+    if (status === AppStatus.Negotiate && !question) {
+      send('No question supplied for negotiation', 1)
+      return
+    }
+    // we have an active query, decode the app data and update the query info
+    if (question && status === AppStatus.Negotiate) {
+      // we're proposing the question
+      ChannelManager.createQuery(channelId, question)
+    } else if (status === AppStatus.Answer) {
+      // suggester has accepted the query, now awaiting answer
+      ChannelManager.acceptOrDeclineQuery(channelId, queryStatus === QueryStatus.Accepted)
+    } else if (status === AppStatus.Validate) {
+      ChannelManager.acceptOrDeclineQueryAnswer(channelId, responseStatus === ResponseStatus.Pay)
+    }
+  } catch (err) {
+    console.log(err)
+    console.log('Error processing query data')
+  }
   ChannelManager.submitSignedState(channelId, state, signature)
   send()
 }

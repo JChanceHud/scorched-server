@@ -28,9 +28,18 @@ interface Channel {
   baseState: State
   signatures: string[]
   messages: Message[]
+  queries: Query[]
   adjudicatorAddress: string,
   balances: { [key: string]: BigNumber | string }
   unreadCount?: number
+}
+
+interface Query {
+  question: string
+  queryAccepted?: boolean
+  answer?: string
+  // paid or burned?
+  answerAccepted?: boolean
 }
 
 interface State {
@@ -64,7 +73,7 @@ class ChannelManager {
   channelIdsForAsker = {} as { [key: string]: string[] }
   channelIdsForSuggester = {} as { [key: string]: string[] }
   channelsById = {} as { [key: string]: Channel }
-  latestNonce = 15
+  latestNonce = 55
   // for listening to individual channels
   channelListenersById = {}
   // for listening for new channels
@@ -192,6 +201,13 @@ class ChannelManager {
     return participants.indexOf(normalizeAddress(address)) !== -1
   }
 
+  addressIsSuggester(address: string, channelId: string) {
+    const channel = this.channelsById[channelId]
+    if (!channel) return false
+    const { participants } = channel
+    return participants.indexOf(normalizeAddress(address)) === 1
+  }
+
   loadOrCreateChannel(_asker: string, _suggester: string) {
     const asker = normalizeAddress(_asker)
     const suggester = normalizeAddress(_suggester)
@@ -246,6 +262,7 @@ class ChannelManager {
       baseState,
       signatures: [],
       messages: [],
+      queries: [],
       adjudicatorAddress: ADJUDICATOR_ADDRESS,
       balances: {
         [ethers.constants.AddressZero]: '0',
@@ -266,15 +283,52 @@ class ChannelManager {
       [ethers.constants.AddressZero]: (await adjudicator.holdings(ethers.constants.AddressZero, channelId))
     }
     this.channelsById[channelId].balances = balances
-    const listeners = this.channelListenersById[channelId] || []
-    for (const fn of listeners) {
-      if (!fn) continue
-      try {
-        fn({ balances })
-      } catch (err) {
-        console.log(err)
-        console.log('Uncaught error in channel listener callback')
-      }
+    this.pushChannelUpdate(channelId, { balances })
+  }
+
+  createQuery(channelId: string, question: string) {
+    const channel = this.channelsById[channelId]
+    if (!channel) throw new Error('Channel not found')
+    if (!channel.states.length) throw new Error('No channel states exist')
+    // make sure we're at a state where a query can be proposed
+    if (this.activeQuery(channelId)) throw new Error('Active query already exists')
+    channel.queries.push({
+      question,
+    })
+  }
+
+  acceptOrDeclineQuery(channelId: string, accepted: boolean) {
+    const activeQuery = this.activeQuery(channelId)
+    if (!activeQuery) throw new Error('No active query for channel')
+    activeQuery.queryAccepted = accepted
+  }
+
+  answerQuery(channelId: string, answer: string) {
+    const activeQuery = this.activeQuery(channelId)
+    if (!activeQuery) throw new Error('No active query for channel')
+    if (activeQuery.queryAccepted !== true) throw new Error('Query has not been accepted')
+    if (activeQuery.answer !== undefined) throw new Error('Query has already been answered')
+    activeQuery.answer = answer
+    this.pushChannelUpdate(channelId, { channel: this.channelsById[channelId] })
+  }
+
+  acceptOrDeclineQueryAnswer(channelId: string, accepted: boolean) {
+    const activeQuery = this.activeQuery(channelId)
+    if (!activeQuery) throw new Error('No active query for channel')
+    activeQuery.answerAccepted = accepted
+  }
+
+  activeQuery(channelId: string): Query | undefined {
+    const channel = this.channelsById[channelId]
+    if (!channel) throw new Error('Channel not found')
+    if (!channel.queries.length) return
+    const latestQuery = channel.queries[channel.queries.length - 1]
+    if (
+      latestQuery.queryAccepted === undefined ||
+      latestQuery.queryAccepted === true && !latestQuery.answer ||
+      latestQuery.queryAccepted === true && latestQuery.answerAccepted === undefined
+    ) {
+      return latestQuery
     }
   }
 
@@ -290,20 +344,35 @@ class ChannelManager {
     if (!channel) throw new Error('Channel not found')
     channel.states.push(state)
     channel.signatures.push(signature)
+    this.pushChannelUpdate(channelId, { state, signature })
+    this.sendMessage(channelId, {
+      text: `State #${state.turnNum} submitted by ${state.turnNum % 2 === 0 ? 'asker' : 'suggester'}!`,
+      type: 0,
+    })
+  }
+
+  pushChannelUpdate(channelId: string, update: any) {
     const listeners = this.channelListenersById[channelId] || []
     for (const fn of listeners) {
       if (!fn) continue
       try {
-        fn({ state, signature })
+        if (update.channel && fn.owner) {
+          // calculate the unread count
+          fn({
+            ...update,
+            channel: {
+              ...update.channel,
+              unreadCount: this.unreadCount(channelId, fn.owner)
+            }
+          })
+        } else {
+          fn(update)
+        }
       } catch (err) {
         console.log(err)
         console.log('Uncaught error in channel listener callback')
       }
     }
-    this.sendMessage(channelId, {
-      text: `State #${state.turnNum} submitted by ${state.turnNum % 2 === 0 ? 'asker' : 'suggester'}!`,
-      type: 0,
-    })
   }
 
   sendMessage(channelId: string, _message: Message) {
@@ -318,19 +387,10 @@ class ChannelManager {
     }
     const channel = this.channelsById[channelId]
     channel.messages.unshift(message)
-    const listeners = this.channelListenersById[channelId] || []
-    for (const fn of listeners) {
-      if (!fn) continue
-      try {
-        fn({ message, channel: {
-          ...channel,
-          unreadCount: this.unreadCount(channelId, fn.owner)
-        } })
-      } catch (err) {
-        console.log(err)
-        console.log('Uncaught error in channel listener callback')
-      }
-    }
+    this.pushChannelUpdate(channelId, {
+      message,
+      channel,
+    })
   }
 
   listenToChannel(channelId: string, _owner: string, cb: Function & { owner?: string }) {

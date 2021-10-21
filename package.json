@@ -16,7 +16,7 @@
     "dotenv": "^10.0.0",
     "especial": "^0.0.5",
     "ethers": "5.4.7",
-    "scorched": "^0.0.1"
+    "scorched": "^0.0.2"
   },
   "devDependencies": {
     "@types/node": "^16.11.1",
