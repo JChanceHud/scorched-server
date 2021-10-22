@@ -316,7 +316,7 @@ class ChannelManager {
     activeQuery.queryAccepted = accepted
     activeQuery.state = accepted ? QueryState.ACCEPTED : QueryState.COMPLETE
     this.sendMessage(channelId, {
-      text: `Question declined by suggester.`,
+      text: accepted ? `Question accepted by suggester!` : `Question declined by suggester.`,
       type: 0,
     })
   }
@@ -365,7 +365,7 @@ class ChannelManager {
     channel.signatures.push(signature)
     this.pushChannelUpdate(channelId, { state, signature })
     this.sendMessage(channelId, {
-      text: `State #${state.turnNum} submitted by ${state.turnNum % 2 === 0 ? 'asker' : 'suggester'}!`,
+      text: `State #${state.turnNum} submitted by ${state.turnNum % 2 === 1 ? 'asker' : 'suggester'}!`,
       type: 0,
     })
   }
